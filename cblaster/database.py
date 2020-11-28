@@ -2,6 +2,7 @@
 This module handles creation of local JSON databases for non-NCBI lookups.
 """
 
+import gzip
 import json
 import logging
 import subprocess
@@ -86,19 +87,30 @@ class Database:
         """
         organisms = []
         LOG.info("Parsing %i files...", len(files))
+        
+        if all(f.endswith(".gz") for f in files):
+            handler = gzip.open
+            options = {"mode": "rt"}
+        elif any(f.endswith(".gz") for f in files):
+            raise ValueError("Some files are gzipped and some are not.")
+        else:
+            handler = open
+            options = {}
+        
         for index, file in enumerate(files, 1):
-            with open(file) as handle:
+            with handler(file, **options) as handle:
                 LOG.info("%i. %s", index, file)
                 if any(key in handle.name for key in ["gb", "gbk", "genbank"]):
                     organism = genbank.parse(handle, feature_types=["CDS"])
+                    organisms.append(organism)
                 elif any(key in handle.name for key in ["gff", "gff3"]):
                     organism = parse_gff(handle)
+                    organisms.append(organism)
                 else:
                     LOG.warning(
                         "Expected GenBank (.gb, .gbk or .genbank) or"
                         " GFF3 (.gff, .gff3) file extensions. Skipping..."
                     )
-                organisms.append(organism)
         return cls(organisms)
 
     def to_list(self):
